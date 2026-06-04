@@ -28,6 +28,15 @@ exports.handler = async function(event, context) {
 
     const data = await response.json();
     
+    // تأمين جلب النص البرمجي بشكل صحيح ليفهمه ملف app.js
+    if (data.content && data.content[0] && data.content[0].text) {
+      return {
+        statusCode: 200,
+        headers,
+        body: data.content[0].text
+      };
+    }
+
     return {
       statusCode: 200,
       headers,
