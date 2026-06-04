@@ -16,7 +16,8 @@ const analyzeWithAI = async (query, region) => {
   const cur = AFFILIATES[region].currency;
   const store = AFFILIATES[region].label;
 
-  const response = await fetch("/.netlify/functions/analyze", {
+  // تم تصحيح هذا السطر وتغييره من netlify إلى المجلد الجديد المتوافق مع Vercel
+  const response = await fetch("/api/analyze", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query, region, store, currency: cur }),
@@ -219,7 +220,7 @@ function App() {
           e("a", { href:buildAffiliateLink(result.name,region), target:"_blank", rel:"noopener noreferrer", style:{ textDecoration:"none", display:"block", marginTop:8 } },
             e("button", { style:s.btnMain }, "🛒 Search All "+AFFILIATES[region].flag+" "+AFFILIATES[region].label+" Deals →")
           ),
-          e("p", { style:{ textAlign:"center", fontSize:11, color:"#374151", marginTop:8 } }, "Affiliate links — free for you, small commission for us")
+          e("p", { style:{ textAlignment:"center", fontSize:11, color:"#374151", marginTop:8 } }, "Affiliate links — free for you, small commission for us")
         ),
         tab==="buy" && e("div", null,
           (result.whereToFind||[]).map((w,i) =>
