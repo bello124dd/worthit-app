@@ -1,69 +1,62 @@
 export default async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
-  }
-
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
+  const { query, region, store, currency } = req.body;
+  const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+
+  if (!GEMINI_API_KEY) {
+    return res.status(500).json({ error: "Missing GEMINI_API_KEY" });
+  }
+
+  const prompt = `You are a shopping analyst. Analyze this product for ${store} (${currency}).
+Product: "${query}"
+
+Respond ONLY with valid JSON, no markdown, no explanation:
+{
+  "name": "full product name",
+  "worthIt": true or false,
+  "verdict": "short verdict (max 6 words)",
+  "summary": "2-3 sentence analysis",
+  "estimatedPrice": 123,
+  "bestPrice": 99,
+  "currency": "${currency}",
+  "regretIndex": 25,
+  "proTips": ["tip 1", "tip 2", "tip 3"],
+  "alternatives": [
+    {"name": "Alternative 1", "asin": "B08N5WRWNW", "price": 89, "rating": 4.5, "savings": 34, "tag": "Best Value"},
+    {"name": "Alternative 2", "asin": "B09G9FPHY6", "price": 79, "rating": 4.3, "savings": 44, "tag": "Budget Pick"}
+  ],
+  "whereToFind": [
+    {"store": "${store}", "asin": "B08N5WRWNW", "price": 99, "tag": "Best Price"},
+    {"store": "${store} Warehouse", "asin": "B08N5WRWNW", "price": 89, "tag": "Open Box"}
+  ]
+}`;
+
   try {
-    const { query, region, store, currency } = req.body;
+    const geminiRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.7, maxOutputTokens: 1000 }
+        })
+      }
+    );
 
-    const searchUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(`https://www.amazon.com/s?k=${encodeURIComponent(query)}`)}`;
-    const amazonResponse = await fetch(searchUrl);
-    const amazonData = await amazonResponse.json();
-    const htmlContent = amazonData.contents;
-
-    const prompt = `You are a shopping assistant. I will provide you with a raw search text from Amazon for the product "${query}". 
-    Extract the real product names, current prices, and ratings found in the text. 
-    Then, build a real analysis based on this data.
+    const data = await geminiRes.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
     
-    Respond ONLY with a valid JSON object, no markdown, no code blocks:
-    {
-      "name": "Extract the most relevant full product name found",
-      "verdict": "Worth It",
-      "worthIt": true,
-      "estimatedPrice": 120,
-      "bestPrice": 99,
-      "summary": "This summary must mention the real prices found on Amazon just now.",
-      "regretIndex": 15,
-      "proTips": ["Check delivery times", "Look for coupon checkboxes on the page"],
-      "alternatives": [
-        { "name": "Real alternative product 1 name found", "price": 85, "rating": 4.5, "savings": 15, "tag": "Best Value", "asin": "B07ZPKN856" },
-        { "name": "Real alternative product 2 name found", "price": 60, "rating": 4.1, "savings": 40, "tag": "Budget Pick", "asin": "B08N5LNXC6" }
-      ],
-      "whereToFind": [
-        { "store": "Amazon", "price": 99, "asin": "B09G9F5C18", "tag": "Live Price" },
-        { "store": "Amazon Warehouse", "price": 89, "asin": "B09G9F5C18", "tag": "Open Box" }
-      ]
-    }
-
-    Here is the Amazon raw source content:
-    ${htmlContent.substring(0, 15000)}`;
-
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`;
-
-    const response = await fetch(geminiUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { responseMimeType: "application/json" }
-      })
-    });
-
-    const data = await response.json();
-    const text = data.candidates[0].content.parts[0].text.trim();
-    const parsed = JSON.parse(text);
-
-    return res.status(200).json({ ...parsed, currency });
+    // تنظيف الرد من markdown إن وُجد
+    const clean = text.replace(/```json|```/g, "").trim();
+    const parsed = JSON.parse(clean);
     
-  } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(200).json(parsed);
+  } catch (err) {
+    console.error("Gemini error:", err);
+    return res.status(500).json({ error: "Analysis failed" });
   }
 }
