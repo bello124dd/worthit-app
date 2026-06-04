@@ -1,62 +1,43 @@
-export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
-  }
+// api/analyze.js
+module.exports = async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  const { query, region, store, currency } = req.body;
-  const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-
-  if (!GEMINI_API_KEY) {
-    return res.status(500).json({ error: "Missing GEMINI_API_KEY" });
-  }
-
-  const prompt = `You are a shopping analyst. Analyze this product for ${store} (${currency}).
-Product: "${query}"
-
-Respond ONLY with valid JSON, no markdown, no explanation:
-{
-  "name": "full product name",
-  "worthIt": true or false,
-  "verdict": "short verdict (max 6 words)",
-  "summary": "2-3 sentence analysis",
-  "estimatedPrice": 123,
-  "bestPrice": 99,
-  "currency": "${currency}",
-  "regretIndex": 25,
-  "proTips": ["tip 1", "tip 2", "tip 3"],
-  "alternatives": [
-    {"name": "Alternative 1", "asin": "B08N5WRWNW", "price": 89, "rating": 4.5, "savings": 34, "tag": "Best Value"},
-    {"name": "Alternative 2", "asin": "B09G9FPHY6", "price": 79, "rating": 4.3, "savings": 44, "tag": "Budget Pick"}
-  ],
-  "whereToFind": [
-    {"store": "${store}", "asin": "B08N5WRWNW", "price": 99, "tag": "Best Price"},
-    {"store": "${store} Warehouse", "asin": "B08N5WRWNW", "price": 89, "tag": "Open Box"}
-  ]
-}`;
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-    const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.7, maxOutputTokens: 1000 }
-        })
-      }
-    );
+    const { query, region, store, currency } = req.body;
+    const apiKey = process.env.GROQ_API_KEY;
 
-    const data = await geminiRes.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    const searchUrl = `https://www.amazon.com/s?k=${encodeURIComponent(query)}`;
+    const scraperUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(searchUrl)}`;
     
-    // تنظيف الرد من markdown إن وُجد
-    const clean = text.replace(/```json|```/g, "").trim();
-    const parsed = JSON.parse(clean);
-    
-    return res.status(200).json(parsed);
-  } catch (err) {
-    console.error("Gemini error:", err);
-    return res.status(500).json({ error: "Analysis failed" });
+    const fetchRes = await fetch(scraperUrl);
+    const fetchJson = await fetchRes.json();
+    const htmlContent = fetchJson.contents || "No context";
+
+    const groqResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: "llama3-8b-8192",
+        messages: [
+          { role: "system", content: `You are a shopping assistant for ${store}. Respond ONLY with raw JSON.` },
+          { role: "user", content: `Analyze "${query}". Context: ${htmlContent.substring(0, 1000)}. Use ${currency}. Return JSON: {name, worthIt, verdict, estimatedPrice, bestPrice, currency, summary, proTips, regretIndex, alternatives, whereToFind}` }
+        ],
+        temperature: 0.2,
+        response_format: { type: "json_object" }
+      })
+    });
+
+    const data = await groqResponse.json();
+    return res.status(200).json(JSON.parse(data.choices[0].message.content));
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
   }
-}
+};
