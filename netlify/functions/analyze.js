@@ -1,7 +1,18 @@
 exports.handler = async (event) => {
-  const { query, region, store, currency } = JSON.parse(event.body);
+  const headers = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Methods": "POST, OPTIONS"
+  };
 
-  const prompt = `You are a shopping expert AI. Analyze this product for a customer shopping on ${store}.
+  if (event.httpMethod === "OPTIONS") {
+    return { statusCode: 200, headers, body: "" };
+  }
+
+  try {
+    const { query, region, store, currency } = JSON.parse(event.body);
+
+    const prompt = `You are a shopping expert AI. Analyze this product for a customer shopping on ${store}.
 Product: "${query}"
 Respond ONLY with valid JSON, no markdown, no extra text:
 {
@@ -32,7 +43,7 @@ Respond ONLY with valid JSON, no markdown, no extra text:
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-3-5-sonnet-20240620",
       max_tokens: 1000,
       messages: [{ role: "user", content: prompt }],
     }),
@@ -45,7 +56,15 @@ Respond ONLY with valid JSON, no markdown, no extra text:
 
   return {
     statusCode: 200,
-    headers: { "Access-Control-Allow-Origin": "*" },
+    headers,
     body: JSON.stringify({ ...parsed, currency }),
   };
+    
+  } catch (error) {
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ error: error.message })
+    };
+  }
 };
