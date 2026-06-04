@@ -12,51 +12,18 @@ const buildProductLink = (asin, region) => {
   return `https://www.${domain}/dp/${asin}?tag=${tag}`;
 };
 
-const analyzeWithClaude = async (query, region) => {
+const analyzeWithAI = async (query, region) => {
   const cur = AFFILIATES[region].currency;
   const store = AFFILIATES[region].label;
-  const prompt = `You are a shopping expert AI. Analyze this product for a customer shopping on ${store}.
-Product: "${query}"
-Respond ONLY with valid JSON, no markdown, no extra text:
-{
-  "name": "full product name",
-  "verdict": "Worth It" or "Overpriced" or "Great Deal" or "Wait for Sale",
-  "worthIt": true or false,
-  "estimatedPrice": number,
-  "bestPrice": number,
-  "summary": "2 sentence honest analysis",
-  "regretIndex": number 0-100,
-  "proTips": ["tip 1", "tip 2", "tip 3"],
-  "alternatives": [
-    { "name": "product name", "price": number, "rating": number, "savings": number, "tag": "Best Value", "asin": "keyword" },
-    { "name": "product name", "price": number, "rating": number, "savings": number, "tag": "Budget Pick", "asin": "keyword" },
-    { "name": "product name", "price": number, "rating": number, "savings": number, "tag": "Premium Alt", "asin": "keyword" }
-  ],
-  "whereToFind": [
-    { "store": "${store}", "price": number, "asin": "keyword", "tag": "Best Deal" },
-    { "store": "${store} Warehouse", "price": number, "asin": "keyword", "tag": "Open Box" }
-  ]
-}`;
 
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
+  const response = await fetch("/.netlify/functions/analyze", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": "YOUR_API_KEY_HERE",
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true",
-    },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 1000,
-      messages: [{ role: "user", content: prompt }],
-    }),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query, region, store, currency: cur }),
   });
-  const data = await response.json();
-  const text = data.content.map(i => i.text || "").join("");
-  const clean = text.replace(/```json|```/g, "").trim();
-  const parsed = JSON.parse(clean);
-  return { ...parsed, currency: cur };
+
+  if (!response.ok) throw new Error("Function error");
+  return await response.json();
 };
 
 const { useState, useEffect } = React;
@@ -121,7 +88,7 @@ function App() {
     setError(""); setStage("loading");
     steps.forEach((st, i) => setTimeout(() => setLoadTxt(st), i * 600));
     try {
-      const data = await analyzeWithClaude(search, region);
+      const data = await analyzeWithAI(search, region);
       setResult(data); setStage("result"); setTab("alts");
     } catch(err) {
       setError("Analysis failed. Check your API key or try again.");
