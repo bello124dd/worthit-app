@@ -9,7 +9,11 @@ const buildAffiliateLink = (query, region) => {
 };
 const buildProductLink = (asin, region) => {
   const { domain, tag } = AFFILIATES[region];
-  return `https://www.${domain}/dp/${asin}?tag=${tag}`;
+  // If asin looks like a real ASIN (10 chars alphanumeric), use dp link, else search
+  if (/^[A-Z0-9]{10}$/.test(asin)) {
+    return `https://www.${domain}/dp/${asin}?tag=${tag}`;
+  }
+  return `https://www.${domain}/s?k=${encodeURIComponent(asin)}&tag=${tag}`;
 };
 
 const PRODUCTS = {
